@@ -129,4 +129,3 @@ export function apply(ctx: Context, config: ConfigShape): void {
     onChange: () => { activate(source()) },
   })
 }
-

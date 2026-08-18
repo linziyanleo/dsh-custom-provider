@@ -73,4 +73,3 @@ npx @deepseek-ai/dsh plugin --profile web remove dsh-custom-provider
 - 六个 compat 字段覆盖 deepseek-harness 提交 `9c9b2d47` 的私有 DeepSeek route 请求要求，绕开 `rc.7` 配置 schema 尚未公开完整字段的问题；没有导入 `@deepseek-ai/dsh-llm-pi-ai/src/*`。
 - bundle patch 只插入独立的 `llm-custom` Cordis 行，不替换、禁用或 monkey-patch 官方 `llm-pi-ai`。
 - 第一版仅支持 `openai-completions`、静态模型目录和文本模型；不含 Settings UI、自动发现、多协议或远端发布流程。
-

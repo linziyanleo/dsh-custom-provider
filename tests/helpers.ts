@@ -168,4 +168,3 @@ export const TOOL_EVENTS = [
   '{"choices":[{"delta":{},"index":0,"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":5,"completion_tokens":2}}',
   '[DONE]',
 ] as const
-

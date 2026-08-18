@@ -75,4 +75,3 @@ describe('static provider materialization', () => {
     })
   })
 })
-

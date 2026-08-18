@@ -195,4 +195,3 @@ export function resolveProviders(config: ConfigShape): ReadonlyMap<string, Resol
   }
   return resolved
 }
-

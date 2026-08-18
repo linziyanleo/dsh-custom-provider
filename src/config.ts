@@ -101,4 +101,3 @@ const providerSchema: z<ProviderConfig> = z.object({
 export const Config: z<ConfigShape> = z.object({
   providers: z.dict(providerSchema).default({}),
 })
-
