@@ -1,0 +1,5 @@
+allowBuilds:
+  # These pi-ai transitive backends are outside this OpenAI-completions bundle;
+  # their lifecycle scripts are not required by the supported runtime path.
+  '@google/genai': false
+  protobufjs: false
