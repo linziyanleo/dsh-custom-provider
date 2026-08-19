@@ -184,6 +184,8 @@ Use `reasoningEfforts: false` when the model does not provide a reasoning contro
 
 ## Security and lifecycle notes
 
+- When a configured model is used, DSH sends its model request and the resolved API credential to that route's user-configured `baseURL` using the selected protocol.
+- The plugin itself adds no telemetry and does not request workspace-file, shell, or browser access. Its Web UI only manages the `llm-custom` settings and referenced DSH credentials.
 - API keys are resolved for each request and are never written into the `llm-custom` settings section.
 - Replacing a key in the Web UI updates the referenced credential without displaying the stored value.
 - Deleting a provider or uninstalling the plugin does not delete its credential or the `llm-custom` section. Remove those separately when they are no longer needed.
