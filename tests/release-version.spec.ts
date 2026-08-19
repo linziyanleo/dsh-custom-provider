@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 
 import { selectReleaseVersion } from '../scripts/prepare-release.mjs'
@@ -19,5 +20,14 @@ describe('release version selection', () => {
   it('rejects prerelease and malformed versions', () => {
     expect(() => selectReleaseVersion('0.1.1-beta.1', undefined)).toThrow('stable semantic version')
     expect(() => selectReleaseVersion('0.1.1', 'latest')).toThrow('stable semantic version')
+  })
+
+  it('does not publish lifecycle scripts rejected by DSH Community Market', async () => {
+    const packageData = JSON.parse(
+      await readFile(new URL('../package.json', import.meta.url), 'utf8'),
+    ) as { scripts?: Record<string, string> }
+    const blocked = ['preinstall', 'install', 'postinstall', 'prepare']
+
+    expect(blocked.filter(name => packageData.scripts?.[name] !== undefined)).toEqual([])
   })
 })
