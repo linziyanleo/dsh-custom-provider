@@ -107,6 +107,7 @@ export interface MockServer {
   paths: string[]
   requests: Record<string, unknown>[]
   headers: IncomingMessage['headers'][]
+  responseStarted: Promise<void>
   close(): Promise<void>
 }
 
@@ -115,6 +116,8 @@ export async function mockServer(script: ServerBehavior[]): Promise<MockServer> 
   const paths: string[] = []
   const requests: Record<string, unknown>[] = []
   const headers: IncomingMessage['headers'][] = []
+  let resolveResponseStarted: (() => void) | undefined
+  const responseStarted = new Promise<void>(resolve => { resolveResponseStarted = resolve })
   const server: Server = createServer((request: IncomingMessage, response: ServerResponse) => {
     let body = ''
     request.on('data', (chunk: Buffer) => { body += chunk.toString('utf8') })
@@ -139,6 +142,8 @@ export async function mockServer(script: ServerBehavior[]): Promise<MockServer> 
         }
         const eventName = behavior.eventNames?.[index - 1]
         response.write(`${eventName === undefined ? '' : `event: ${eventName}\n`}data: ${event}\n\n`)
+        resolveResponseStarted?.()
+        resolveResponseStarted = undefined
         if (behavior.delayMs === undefined) writeNext()
         else setTimeout(writeNext, behavior.delayMs)
       }
@@ -153,6 +158,7 @@ export async function mockServer(script: ServerBehavior[]): Promise<MockServer> 
     paths,
     requests,
     headers,
+    responseStarted,
     close: () => new Promise<void>((resolve, reject) => {
       server.close(error => { if (error === undefined) resolve(); else reject(error) })
     }),

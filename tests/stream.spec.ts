@@ -225,7 +225,8 @@ describe('PiAiAdapter reuse', () => {
       messages: [],
       signal: controller.signal,
     })
-    setTimeout(() => { controller.abort('test cancellation') }, 10)
+    await server.responseStarted
+    controller.abort('test cancellation')
 
     expect((await resultPromise).finish.kind).toBe('aborted')
     expect(server.paths).toEqual(['/v1/chat/completions'])
