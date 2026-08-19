@@ -10,6 +10,10 @@
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./client": {
+      "types": "./lib/client.d.ts",
+      "default": "./lib/client.js"
+    },
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
@@ -22,9 +26,9 @@
   "scripts": {
     "test": "vitest run --exclude tests/routify.e2e.spec.ts",
     "test:e2e": "vitest run tests/routify.e2e.spec.ts",
-    "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json",
-    "check": "pnpm test && pnpm typecheck && pnpm build",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.client.json",
+    "build": "tsc -p tsconfig.build.json && tsdown",
+    "check": "pnpm test && pnpm typecheck && pnpm build && node scripts/assert-client-bundle.mjs",
     "prepare": "pnpm build"
   },
   "engines": {
@@ -35,6 +39,17 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-primitives",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-api-remotes"
+      ]
     }
   },
   "peerDependencies": {
@@ -48,8 +63,10 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.1.0-rc.7",
     "@deepseek-ai/dsh-credentials": "0.1.0-rc.7",
     "@deepseek-ai/dsh-credentials-local": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-invariants": "0.1.0-rc.7",
     "@deepseek-ai/dsh-llm": "0.1.0-rc.7",
     "@deepseek-ai/dsh-llm-pi-ai": "0.1.0-rc.7",
     "@deepseek-ai/dsh-settings": "0.1.0-rc.7",
@@ -57,6 +74,9 @@
     "@deepseek-ai/schemastery": "3.18.1",
     "@earendil-works/pi-ai": "0.82.1",
     "@types/node": "^22.20.0",
+    "@types/react": "~18.3.31",
+    "react": "^18.3.1",
+    "tsdown": "^0.22.14",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
   }

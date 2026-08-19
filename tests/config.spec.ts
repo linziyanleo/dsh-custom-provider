@@ -4,6 +4,14 @@ import type { ConfigShape } from '../src/config.js'
 import { resolveProviders } from '../src/provider.js'
 import { routeConfig } from './helpers.js'
 
+/** Assert one schema node carries both the English default and zh-CN translation. */
+function expectBilingual(schema: { meta: { description?: unknown } }, path: string): void {
+  expect(schema.meta.description, path).toMatchObject({
+    '': expect.any(String),
+    'zh-CN': expect.any(String),
+  })
+}
+
 describe('configuration boundary', () => {
   it('accepts the complete static route through the Cordis schema', () => {
     expect(Config(routeConfig('https://gateway.example/v1'))).toMatchObject({
@@ -40,6 +48,57 @@ describe('configuration boundary', () => {
 
     const relative = routeConfig('/protocol/openai/v1')
     expect(() => resolveProviders(relative)).toThrow(/absolute URL/)
+  })
+})
+
+describe('settings form metadata', () => {
+  it('carries English and zh-CN descriptions for every interactive field', () => {
+    expectBilingual(Config, 'llm-custom')
+    const providers = Config.dict!.providers!
+    expectBilingual(providers, 'providers')
+    const provider = providers.inner!
+    expect(provider.type).toBe('object')
+    for (const field of ['displayName', 'apiKeyEnv', 'api', 'baseURL', 'compat', 'models']) {
+      expectBilingual(provider.dict![field]!, `providers.*.${field}`)
+    }
+    expect(provider.dict!.apiKeyEnv!.meta.role).toBe('credential-ref')
+    expect(provider.dict!.compat!.meta.collapse).toBe(true)
+
+    const model = provider.dict!.models!.inner!
+    for (const field of ['id', 'name', 'contextWindow', 'maxTokens', 'reasoningEfforts', 'compat']) {
+      expectBilingual(model.dict![field]!, `models[].${field}`)
+    }
+
+    const efforts = model.dict!.reasoningEfforts!.list![1]!
+    expect(efforts.type).toBe('dict')
+    expectBilingual(efforts, 'reasoningEfforts dict')
+
+    const compat = provider.dict!.compat!
+    for (const field of [
+      'supportsStore',
+      'supportsDeveloperRole',
+      'thinkingFormat',
+      'supportsReasoningEffort',
+      'maxTokensField',
+      'requiresReasoningContentOnAssistantMessages',
+    ]) {
+      expectBilingual(compat.dict![field]!, `compat.${field}`)
+    }
+  })
+
+  it('keeps the bilingual metadata in the serialized wire schema', () => {
+    const serialized = JSON.parse(JSON.stringify(Config.toJSON())) as {
+      refs: Record<string, { meta?: { description?: unknown } }>
+    }
+    const described = Object.values(serialized.refs)
+      .filter(node => node.meta?.description !== undefined)
+    expect(described.length).toBeGreaterThan(0)
+    for (const node of described) {
+      expect(node.meta!.description).toMatchObject({
+        '': expect.any(String),
+        'zh-CN': expect.any(String),
+      })
+    }
   })
 })
 

@@ -39,6 +39,10 @@ llm-custom:
 
 密钥值不写入上述配置。`apiKeyEnv` 是 DSH credential ref，插件在每次请求时通过 `ctx.credentials.resolve()` 解析，因此凭据更新会在下一次请求生效；缺失或不可用的 ref 会在发请求前明确失败。
 
+## Web UI 配置
+
+web profile 下，bundle 还会注入一个浏览器客户端模块（`dsh.client`），在设置面板注册「自定义提供方 / Custom Providers」页面（中英双语，跟随界面语言）。该页面提供最小交互编辑：新增/编辑/删除路由，字段包括 Provider ID、显示名称、API 地址、凭据引用、API 密钥（只写，经 `credentials.set` 存入凭据存储）以及模型目录（模型 ID、显示名称、上下文窗口、最大输出 token，支持 K/M 后缀）。保存经 `settings.mutate` 按路径 diff 写入并携带 `expectedRevision` 防冲突；`reasoningEfforts`、`compat` 等表单之外的字段在保存时原样保留，仍需在 `settings.yaml` 中编辑。
+
 ## 安装与验证
 
 本地 checkout：
@@ -72,4 +76,4 @@ npx @deepseek-ai/dsh plugin --profile web remove dsh-custom-provider
 - 已针对 `@deepseek-ai/dsh` / `@deepseek-ai/dsh-llm-pi-ai` `0.1.0-rc.7` 和 `@earendil-works/pi-ai` `0.82.1` 设计。要求官方包根导出 `PiAiAdapter`。
 - 六个 compat 字段覆盖 deepseek-harness 提交 `9c9b2d47` 的私有 DeepSeek route 请求要求，绕开 `rc.7` 配置 schema 尚未公开完整字段的问题；没有导入 `@deepseek-ai/dsh-llm-pi-ai/src/*`。
 - bundle patch 只插入独立的 `llm-custom` Cordis 行，不替换、禁用或 monkey-patch 官方 `llm-pi-ai`。
-- 第一版仅支持 `openai-completions`、静态模型目录和文本模型；不含 Settings UI、自动发现、多协议或远端发布流程。
+- 第一版仅支持 `openai-completions`、静态模型目录和文本模型；不含自动发现、多协议或远端发布流程。Web 配置面是注入的「自定义提供方」设置页（`settings.section` 槽位，要求 rc.7 宿主）；设置-模型页的内置编辑器按命名空间硬编码，`llm-custom` 卡片仍显示 YAML 提示。
