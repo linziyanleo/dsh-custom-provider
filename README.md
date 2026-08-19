@@ -1,19 +1,87 @@
 # dsh-custom-provider
 
-`dsh-custom-provider` 是一个树外 DeepSeek Harness bundle。它把 `settings.yaml` 中的静态 OpenAI Chat Completions provider 注册到原生 `ctx.llm` seam，模型继续使用 DSH Web 的原生 picker、streaming、tool call、usage/finish、取消和 reasoning-effort 流程。
+[English](README.md) | [简体中文](README.zh.md)
 
-## 设计与配置 interface
+A DSH plugin for configuring static OpenAI-compatible providers and model catalogs from the Web settings UI or `settings.yaml`.
 
-插件只公开一个配置 interface：`llm-custom.providers.<route>`。每条 route 必须声明 credential ref、`openai-completions`、HTTP(S) `baseURL` 和至少一个静态模型；不会调用 `/models`，也不注册模型发现。加载时会先解析完整配置，再原子替换 adapter 路由与 configurable-provider directory；无效 URL、空目录、重复模型、非法 credential ref、容量或 reasoning 映射会直接失败。
+## The problem it solves
+
+An OpenAI-compatible endpoint may need more than a base URL and an API key: its model catalog may be known in advance, model capacities may need to be declared explicitly, and request fields for reasoning or message replay may differ between providers.
+
+`dsh-custom-provider` turns that information into provider routes that DeepSeek Harness (DSH) can use directly. Configured models appear in DSH's native model picker and continue through its standard streaming, tool-call, usage, finish-reason, cancellation, and reasoning-effort flows.
+
+## What the plugin provides
+
+- A bilingual Web settings page for adding, editing, and removing custom providers.
+- A declarative `llm-custom.providers` configuration for `settings.yaml`.
+- A static model catalog; the plugin does not depend on a provider's `/models` endpoint.
+- Per-request credential resolution through the DSH credentials service. API keys are not stored in `settings.yaml`.
+- Provider-level defaults and per-model overrides for OpenAI Chat Completions compatibility fields.
+- Full-config validation before route registrations are replaced, so an invalid edit does not partially activate.
+
+## Screenshots
+
+### Web settings
+
+Provider credentials, endpoints, models, capacities, and advanced compatibility fields can be managed in DSH Web.
+
+![Custom Providers settings page](docs/images/custom-providers-settings.png)
+
+### YAML configuration
+
+The same provider and model catalog can be managed directly in `settings.yaml`.
+
+![llm-custom configuration in settings.yaml](docs/images/settings-yaml.png)
+
+## Requirements
+
+- Node.js `^22.19.0` or `>=24.0.0`
+- DeepSeek Harness with the Web profile
+- DSH `0.1.0-rc.7` compatible packages; see [`peerDependencies`](package.json) for the complete contract
+
+## Installation
+
+Build and install a package from a local checkout:
+
+```sh
+git clone https://github.com/linziyanleo/dsh-custom-provider.git
+cd dsh-custom-provider
+pnpm install --frozen-lockfile
+pnpm check
+pnpm pack --pack-destination /tmp
+npx @deepseek-ai/dsh plugin --profile web add /tmp/dsh-custom-provider-0.1.0.tgz
+```
+
+Verify that DSH loads the bundle and its configuration namespace:
+
+```sh
+npx @deepseek-ai/dsh --profile web --dump-config
+```
+
+When installing directly from Git, pin a commit and allow the package's `prepare` build script if your package-manager policy blocks dependency build scripts.
+
+## Configuration
+
+### Web settings
+
+Open **Settings → Custom Providers** in DSH Web, then:
+
+1. Add a provider ID, display name, API base URL, and credential reference.
+2. Enter the API key. The field is write-only and stores the value through the DSH credentials service.
+3. Add one or more models with their model IDs, display names, context windows, and maximum outputs. Capacity inputs accept integers and `K`/`M` suffixes such as `200K` or `1m`.
+4. Expand **Advanced** only when the endpoint requires compatibility overrides or custom reasoning-effort mappings.
+5. Save the provider. Its models become available to the model picker immediately after the settings change is applied.
+
+### `settings.yaml`
 
 ```yaml
 llm-custom:
   providers:
-    routify:
-      displayName: Routify
-      apiKeyEnv: ROUTIFY_API_KEY
+    example:
+      displayName: Example Provider
+      apiKeyEnv: EXAMPLE_API_KEY
       api: openai-completions
-      baseURL: https://routify.alibaba-inc.com/protocol/openai/v1
+      baseURL: https://api.example.com/v1
       compat:
         supportsStore: false
         supportsDeveloperRole: false
@@ -22,58 +90,104 @@ llm-custom:
         maxTokensField: max_tokens
         requiresReasoningContentOnAssistantMessages: true
       models:
-        - id: your-model-id
-          name: Your Model
+        - id: example-model
+          name: Example Model
           contextWindow: 262144
           maxTokens: 32768
           reasoningEfforts:
             off:
             high: high
             max: max
-          # 可选；逐字段覆盖 route compat。
-          compat:
-            supportsReasoningEffort: true
 ```
 
-`reasoningEfforts` 的键是 DSH picker 展示的 pi-ai 档位，值是 provider 接收的 wire spelling。未声明的档位不支持；只有 `off:` 可以留空。设为 `false` 表示模型不提供 reasoning 控件。`contextWindow` 和 `maxTokens` 都是必填正整数；当前只声明文本输入。
+`apiKeyEnv` is a credential reference, not the secret itself. Configure its value through DSH's credentials service or the Web settings page.
 
-密钥值不写入上述配置。`apiKeyEnv` 是 DSH credential ref，插件在每次请求时通过 `ctx.credentials.resolve()` 解析，因此凭据更新会在下一次请求生效；缺失或不可用的 ref 会在发请求前明确失败。
+## Configuration reference
 
-## Web UI 配置
+Each key below is relative to `llm-custom.providers.<provider-id>`.
 
-web profile 下，bundle 还会注入一个浏览器客户端模块（`dsh.client`），在设置面板注册「自定义提供方 / Custom Providers」页面（中英双语，跟随界面语言）。该页面提供新增/编辑/删除路由，字段包括 Provider ID、显示名称、API 地址、凭据引用、API 密钥（只写，经 `credentials.set` 存入凭据存储）以及模型目录（模型 ID、显示名称、上下文窗口、最大输出，支持 `200K`、`1m` 等 K/M 后缀）。「高级字段」展开区可完整配置 provider/model 的 `compat` 六项和每个模型的 `reasoningEfforts` 档位映射；保存经 `settings.mutate` 按路径 diff 写入并携带 `expectedRevision` 防冲突。
+In the Web UI, a provider ID must start with a lowercase letter and contain only lowercase letters, digits, and dashes.
 
-## 安装与验证
+### Provider fields
 
-本地 checkout：
+| Field | Required | Description |
+| --- | --- | --- |
+| `displayName` | No | Name shown in the model picker. Defaults to the provider ID. |
+| `apiKeyEnv` | Yes | DSH credential reference resolved before every request. |
+| `api` | Yes | Wire protocol. The supported value is `openai-completions`. |
+| `baseURL` | Yes | Absolute HTTP(S) base URL of the OpenAI-compatible endpoint. Trailing slashes are normalized. |
+| `compat` | No | Compatibility defaults inherited by every model on the route. |
+| `models` | Yes | Static model catalog containing at least one model. Model IDs must be unique within the provider. |
 
-```sh
-pnpm install
-pnpm check
-pnpm pack --pack-destination /tmp
-npx @deepseek-ai/dsh plugin --profile web add /tmp/dsh-custom-provider-0.1.0.tgz
-npx @deepseek-ai/dsh --profile web --dump-config
+### Model fields
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `id` | Yes | Model ID sent to the provider. |
+| `name` | No | Name shown in the model picker. Defaults to `id`. |
+| `contextWindow` | Yes | Positive integer context-window size in tokens. |
+| `maxTokens` | Yes | Positive integer maximum output size in tokens. |
+| `reasoningEfforts` | No | Selectable DSH reasoning levels mapped to provider wire values. Set to `false` to disable the reasoning control. |
+| `compat` | No | Per-model compatibility values. Each declared field overrides the provider-level value. |
+
+### Compatibility fields
+
+`compat` accepts the same fields at provider and model level:
+
+| Field | Values | Effect |
+| --- | --- | --- |
+| `supportsStore` | `true` / `false` | Whether the request may send the OpenAI `store` parameter. |
+| `supportsDeveloperRole` | `true` / `false` | Whether system prompts may use the `developer` role. |
+| `thinkingFormat` | `openai`, `deepseek`, `openrouter`, `together`, `zai`, `qwen`, `string-thinking`, `ant-ling` | Reasoning-content format understood by the endpoint. |
+| `supportsReasoningEffort` | `true` / `false` | Whether the request may send a reasoning-effort parameter. |
+| `maxTokensField` | `max_completion_tokens` / `max_tokens` | Request field used for the maximum output limit. |
+| `requiresReasoningContentOnAssistantMessages` | `true` / `false` | Whether replayed assistant messages retain `reasoning_content`. |
+
+Only declare compatibility fields required by the endpoint; omitted model fields inherit the provider-level values.
+
+### Reasoning-effort mappings
+
+The supported DSH levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. A mapping value is the exact string expected by the provider. Only `off` may be empty (`null` in YAML), and a mapping must expose at least one non-`off` level. Omitted levels are unavailable in the picker.
+
+```yaml
+reasoningEfforts:
+  off:
+  medium: medium
+  high: high
 ```
 
-发布到 npm 后，安装命令可缩短为：
+Use `reasoningEfforts: false` when the model does not provide a reasoning control.
 
-```sh
-npx @deepseek-ai/dsh plugin --profile web add dsh-custom-provider
-```
+## Security and lifecycle notes
 
-Git 安装需要信任并允许包的 `prepare` 构建脚本；建议固定 commit。pnpm 10+ 首次拒绝构建时，把它提示的精确包键加入该 profile 的 `pnpm-workspace.yaml` `allowBuilds`，再重试安装。
+- API keys are resolved for each request and are never written into the `llm-custom` settings section.
+- Replacing a key in the Web UI updates the referenced credential without displaying the stored value.
+- Deleting a provider or uninstalling the plugin does not delete its credential or the `llm-custom` section. Remove those separately when they are no longer needed.
 
-卸载：
+## Current scope
+
+- OpenAI Chat Completions-compatible endpoints only
+- Static, text-input model catalogs only
+- No remote model discovery
+- No automatic provider-specific defaults; compatibility fields are explicit configuration
+
+## Uninstall
 
 ```sh
 npx @deepseek-ai/dsh plugin --profile web remove dsh-custom-provider
 ```
 
-卸载 bundle 不会删除 `settings.yaml` 中的 `llm-custom` section 或 credential；需要时由用户分别清理。
+The uninstall command removes the plugin bundle only. See the lifecycle notes above for settings and credential cleanup.
 
-## 兼容范围与限制
+## Development
 
-- 已针对 `@deepseek-ai/dsh` / `@deepseek-ai/dsh-llm-pi-ai` `0.1.0-rc.7` 和 `@earendil-works/pi-ai` `0.82.1` 设计。要求官方包根导出 `PiAiAdapter`。
-- 六个 compat 字段覆盖 deepseek-harness 提交 `9c9b2d47` 的私有 DeepSeek route 请求要求，绕开 `rc.7` 配置 schema 尚未公开完整字段的问题；没有导入 `@deepseek-ai/dsh-llm-pi-ai/src/*`。
-- bundle patch 只插入独立的 `llm-custom` Cordis 行，不替换、禁用或 monkey-patch 官方 `llm-pi-ai`。
-- 第一版仅支持 `openai-completions`、静态模型目录和文本模型；不含自动发现、多协议或远端发布流程。Web 配置面是注入的「自定义提供方」设置页（`settings.section` 槽位，要求 rc.7 宿主）；设置-模型页的内置编辑器按命名空间硬编码，`llm-custom` 卡片仍显示 YAML 提示。
+```sh
+pnpm install --frozen-lockfile
+pnpm check
+```
+
+`pnpm check` runs the offline test suite, server and client type checks, the production build, and a client-bundle assertion. Live-provider acceptance is intentionally opt-in and is not part of the default check.
+
+## License
+
+[MIT](LICENSE)

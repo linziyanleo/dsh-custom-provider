@@ -1,7 +1,13 @@
 {
   "name": "dsh-custom-provider",
   "version": "0.1.0",
-  "description": "Static OpenAI-compatible provider bundle for DeepSeek Harness",
+  "description": "DSH plugin for configuring static OpenAI-compatible providers and model catalogs",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "openai-compatible"
+  ],
   "type": "module",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
@@ -21,6 +27,8 @@
     "lib",
     "cordis.patch.yml",
     "README.md",
+    "README.zh.md",
+    "docs/images",
     "LICENSE"
   ],
   "scripts": {
