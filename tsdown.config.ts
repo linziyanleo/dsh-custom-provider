@@ -20,7 +20,7 @@ export default defineConfig({
   outputOptions: {
     banner: [
       'window.__ModuleLoader__.load({',
-      '\tid: "dsh-custom-provider",',
+      '\tid: "@linziyanleo/dsh-custom-provider",',
       '\tfactory: (require) => {',
       '\t\tvar module = { exports: {} };',
       '\t\tvar exports = module.exports;',

@@ -1,12 +1,23 @@
 {
-  "name": "dsh-custom-provider",
-  "version": "0.1.0",
-  "description": "DSH plugin for configuring static OpenAI-compatible providers and model catalogs",
+  "name": "@linziyanleo/dsh-custom-provider",
+  "version": "0.1.1",
+  "description": "DSH plugin for static OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages providers",
+  "author": "Ziyan Lin <linziyanleo@outlook.com> (https://github.com/linziyanleo)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/linziyanleo/dsh-custom-provider.git"
+  },
+  "bugs": {
+    "url": "https://github.com/linziyanleo/dsh-custom-provider/issues"
+  },
+  "homepage": "https://github.com/linziyanleo/dsh-custom-provider#readme",
   "keywords": [
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
-    "openai-compatible"
+    "openai-compatible",
+    "openai-responses",
+    "anthropic"
   ],
   "type": "module",
   "main": "./lib/index.js",
@@ -37,6 +48,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.client.json",
     "build": "tsc -p tsconfig.build.json && tsdown",
     "check": "pnpm test && pnpm typecheck && pnpm build && node scripts/assert-client-bundle.mjs",
+    "release:version": "node scripts/prepare-release.mjs",
+    "prepublishOnly": "pnpm check && npm pack --dry-run --ignore-scripts",
     "prepare": "pnpm build"
   },
   "engines": {
@@ -44,6 +57,11 @@
   },
   "packageManager": "pnpm@11.7.0",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org",
+    "provenance": true
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

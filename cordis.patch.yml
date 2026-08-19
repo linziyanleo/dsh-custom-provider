@@ -1,4 +1,3 @@
 - insert:
     - id: llm-custom
-      name: 'dsh-custom-provider'
-
+      name: '@linziyanleo/dsh-custom-provider'
