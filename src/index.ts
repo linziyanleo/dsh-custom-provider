@@ -26,6 +26,7 @@ export type {
   CompatConfig,
   ConfigShape,
   ModelConfig,
+  ProviderApi,
   ProviderConfig,
   ReasoningEfforts,
 } from './config.js'

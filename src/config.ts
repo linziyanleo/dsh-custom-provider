@@ -1,8 +1,14 @@
 import z from '@deepseek-ai/schemastery'
 import type { ModelThinkingLevel, OpenAICompletionsCompat } from '@earendil-works/pi-ai'
 
-/** The only wire protocol supported by the first bundle release. */
-export const OPENAI_COMPLETIONS_API = 'openai-completions' as const
+/** Wire protocols supported by the installed DSH pi-ai adapter. */
+export const PROVIDER_APIS = [
+  'openai-completions',
+  'openai-responses',
+  'anthropic-messages',
+] as const
+
+export type ProviderApi = typeof PROVIDER_APIS[number]
 
 /** Pi-ai reasoning levels in selector order. */
 export const THINKING_LEVELS = [
@@ -50,11 +56,11 @@ export interface ModelConfig {
   compat?: CompatConfig
 }
 
-/** One OpenAI-compatible provider route. */
+/** One statically catalogued provider route. */
 export interface ProviderConfig {
   displayName?: string
   apiKeyEnv: string
-  api: typeof OPENAI_COMPLETIONS_API
+  api: ProviderApi
   baseURL: string
   compat?: CompatConfig
   models: ModelConfig[]
@@ -133,12 +139,12 @@ const providerSchema: z<ProviderConfig> = z.object({
   apiKeyEnv: bilingual(z.string().role('credential-ref').required(),
     'Credential reference resolved per request, e.g. ROUTIFY_API_KEY',
     '凭据引用，每次请求时解析，例如 ROUTIFY_API_KEY'),
-  api: bilingual(z.union([OPENAI_COMPLETIONS_API]).required(),
-    'Wire protocol (only openai-completions is supported)',
-    '线协议（当前仅支持 openai-completions）'),
+  api: bilingual(z.union(PROVIDER_APIS).required(),
+    'Wire protocol used by this provider route',
+    '该提供方路由使用的线协议'),
   baseURL: bilingual(z.string().required(),
-    'Absolute http(s) endpoint of the OpenAI-compatible API',
-    'OpenAI 兼容接口的绝对 http(s) 地址'),
+    'Absolute http(s) endpoint of the provider API',
+    '提供方接口的绝对 http(s) 地址'),
   compat: bilingual(compatSchema,
     'Compatibility defaults inherited by every model on this route',
     '该路由下所有模型继承的兼容性默认值').collapse(),
@@ -153,5 +159,5 @@ export const Config: z<ConfigShape> = bilingual(z.object({
     'Custom provider routes keyed by route id',
     '以路由 ID 为键的自定义提供方路由'),
 }),
-  'Static OpenAI-compatible providers',
-  '静态 OpenAI 兼容提供方')
+  'Static custom providers',
+  '静态自定义提供方')

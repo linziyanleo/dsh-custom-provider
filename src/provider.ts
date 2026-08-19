@@ -3,21 +3,26 @@ import { resolveRetryPolicy } from '@deepseek-ai/dsh-llm'
 import type { ResolvedPiAiProviderProfile } from '@deepseek-ai/dsh-llm-pi-ai'
 import { createProvider } from '@earendil-works/pi-ai'
 import type {
+  Api,
   ApiKeyAuth,
   Model,
   ModelCost,
   OpenAICompletionsCompat,
+  ProviderStreams,
   ThinkingLevelMap,
 } from '@earendil-works/pi-ai'
+import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy'
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy'
+import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy'
 import {
-  OPENAI_COMPLETIONS_API,
+  PROVIDER_APIS,
   THINKING_LEVELS,
 } from './config.js'
 import type {
   CompatConfig,
   ConfigShape,
   ModelConfig,
+  ProviderApi,
   ProviderConfig,
   ReasoningEfforts,
 } from './config.js'
@@ -25,6 +30,21 @@ import type {
 const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 300_000
 const NO_COST: ModelCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 const THINKING_LEVEL_SET = new Set<string>(THINKING_LEVELS)
+
+interface ProtocolDefinition {
+  createApi(): ProviderStreams
+}
+
+/** The protocol seam: each adapter owns only its pi-ai stream factory. */
+const PROTOCOLS = {
+  'openai-completions': { createApi: openAICompletionsApi },
+  'openai-responses': { createApi: openAIResponsesApi },
+  'anthropic-messages': { createApi: anthropicMessagesApi },
+} satisfies Record<ProviderApi, ProtocolDefinition>
+
+function hasCompatValues(value: CompatConfig | undefined): boolean {
+  return value !== undefined && Object.values(value).some(field => field !== undefined)
+}
 
 /** Return a non-empty string or fail with the exact configuration path. */
 function nonEmpty(value: unknown, path: string): string {
@@ -61,7 +81,7 @@ function positiveInteger(value: unknown, path: string): number {
 function reasoning(
   efforts: false | ReasoningEfforts | undefined,
   path: string,
-): Pick<Model<'openai-completions'>, 'reasoning' | 'thinkingLevelMap'> {
+): Pick<Model<Api>, 'reasoning' | 'thinkingLevelMap'> {
   if (efforts === undefined || efforts === false) return { reasoning: false }
   if (efforts === null || typeof efforts !== 'object' || Array.isArray(efforts)) {
     throw new Error(`llm-custom: ${path} must be false or a level-to-wire mapping`)
@@ -117,18 +137,19 @@ function apiKeyAuth(displayName: string): ApiKeyAuth {
 /** Materialize one static model without endpoint discovery. */
 function resolveModel(
   route: string,
+  api: ProviderApi,
   baseURL: string,
   routeCompat: CompatConfig | undefined,
   source: ModelConfig,
   index: number,
-): Model<'openai-completions'> {
+): Model<ProviderApi> {
   const path = `providers.${route}.models[${index}]`
   const id = nonEmpty(source.id, `${path}.id`)
   const name = source.name === undefined ? id : nonEmpty(source.name, `${path}.name`)
   return {
     id,
     name,
-    api: OPENAI_COMPLETIONS_API,
+    api,
     provider: route,
     baseUrl: baseURL,
     input: ['text'],
@@ -136,7 +157,7 @@ function resolveModel(
     contextWindow: positiveInteger(source.contextWindow, `${path}.contextWindow`),
     maxTokens: positiveInteger(source.maxTokens, `${path}.maxTokens`),
     ...reasoning(source.reasoningEfforts, `${path}.reasoningEfforts`),
-    ...compat(routeCompat, source.compat),
+    ...(api === 'openai-completions' ? compat(routeCompat, source.compat) : {}),
   }
 }
 
@@ -146,8 +167,12 @@ function resolveProvider(route: string, source: ProviderConfig): ResolvedPiAiPro
   const path = `providers.${route}`
   const displayName = source.displayName === undefined ? route : nonEmpty(source.displayName, `${path}.displayName`)
   const apiKeyEnv = credentialRef(nonEmpty(source.apiKeyEnv, `${path}.apiKeyEnv`))
-  if (source.api !== OPENAI_COMPLETIONS_API) {
-    throw new Error(`llm-custom: ${path}.api must be ${OPENAI_COMPLETIONS_API}`)
+  if (!(PROVIDER_APIS as readonly string[]).includes(source.api)) {
+    throw new Error(`llm-custom: ${path}.api must be one of ${PROVIDER_APIS.join(', ')}`)
+  }
+  const api = source.api
+  if (api !== 'openai-completions' && hasCompatValues(source.compat)) {
+    throw new Error(`llm-custom: ${path}.compat is only supported by openai-completions`)
   }
   const baseURL = endpoint(source.baseURL, `${path}.baseURL`)
   if (!Array.isArray(source.models) || source.models.length === 0) {
@@ -155,7 +180,10 @@ function resolveProvider(route: string, source: ProviderConfig): ResolvedPiAiPro
   }
   const seen = new Set<string>()
   const models = source.models.map((model, index) => {
-    const resolved = resolveModel(route, baseURL, source.compat, model, index)
+    if (api !== 'openai-completions' && hasCompatValues(model.compat)) {
+      throw new Error(`llm-custom: ${path}.models[${index}].compat is only supported by openai-completions`)
+    }
+    const resolved = resolveModel(route, api, baseURL, source.compat, model, index)
     if (seen.has(resolved.id)) {
       throw new Error(`llm-custom: ${path}.models lists model "${resolved.id}" more than once`)
     }
@@ -167,7 +195,7 @@ function resolveProvider(route: string, source: ProviderConfig): ResolvedPiAiPro
     provider: route,
     displayName,
     apiKeyEnv,
-    api: OPENAI_COMPLETIONS_API,
+    api,
     baseURL,
     streamIdleTimeoutMs: DEFAULT_STREAM_IDLE_TIMEOUT_MS,
     retryPolicy: resolveRetryPolicy(undefined, `llm-custom: ${path}.retryPolicy`),
@@ -178,7 +206,7 @@ function resolveProvider(route: string, source: ProviderConfig): ResolvedPiAiPro
       baseUrl: baseURL,
       auth: { apiKey: apiKeyAuth(displayName) },
       models,
-      api: openAICompletionsApi(),
+      api: PROTOCOLS[api].createApi(),
     }),
   }
 }

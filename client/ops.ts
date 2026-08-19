@@ -18,6 +18,15 @@ export const THINKING_FORMATS = [
 
 export type ThinkingFormat = typeof THINKING_FORMATS[number]
 
+/** Provider wire protocols exposed by the server configuration schema. */
+export const PROVIDER_APIS = [
+  'openai-completions',
+  'openai-responses',
+  'anthropic-messages',
+] as const
+
+export type ProviderApi = typeof PROVIDER_APIS[number]
+
 /** Pi-ai reasoning levels in selector order. */
 export const THINKING_LEVELS = [
   'off',
@@ -70,6 +79,8 @@ export interface ModelDraft {
 export interface ProviderDraft {
   displayName: string
   apiKeyEnv: string
+  /** Optional so callers predating protocol selection keep the original default. */
+  api?: ProviderApi
   baseURL: string
   models: ModelDraft[]
   /** Optional for the same backward-compatible reason as {@link ModelDraft.compat}. */
@@ -111,6 +122,7 @@ export function emptyProviderDraft(): ProviderDraft {
   return {
     displayName: '',
     apiKeyEnv: '',
+    api: 'openai-completions',
     baseURL: '',
     models: [],
     compat: emptyCompatDraft(),
@@ -236,9 +248,13 @@ function reasoningDraftFrom(value: unknown): { mode: ReasoningMode; efforts: Rea
 /** Parse a committed provider section into the editable form draft. */
 export function draftFromConfig(config: Record<string, unknown> | undefined): ProviderDraft {
   const models = Array.isArray(config?.models) ? config.models : []
+  const api = typeof config?.api === 'string' && (PROVIDER_APIS as readonly string[]).includes(config.api)
+    ? config.api as ProviderApi
+    : 'openai-completions'
   return {
     displayName: typeof config?.displayName === 'string' ? config.displayName : '',
     apiKeyEnv: typeof config?.apiKeyEnv === 'string' ? config.apiKeyEnv : '',
+    api,
     baseURL: typeof config?.baseURL === 'string' ? config.baseURL : '',
     compat: compatDraftFrom(config?.compat),
     models: models.map((model) => {
@@ -331,9 +347,12 @@ export function mergeProvider(
   const merged: Record<string, unknown> = { ...committed }
   assign(merged, 'displayName', draft.displayName)
   assign(merged, 'apiKeyEnv', draft.apiKeyEnv)
-  merged.api = 'openai-completions'
+  const api = draft.api ?? 'openai-completions'
+  merged.api = api
   merged.baseURL = draft.baseURL.trim().replace(/\/+$/, '')
-  if (draft.compat !== undefined) {
+  if (api !== 'openai-completions') {
+    delete merged.compat
+  } else if (draft.compat !== undefined) {
     const compat = materializeCompat(draft.compat)
     if (compat === undefined) delete merged.compat
     else merged.compat = compat
@@ -352,7 +371,9 @@ export function mergeProvider(
       if (reasoning === undefined) delete next.reasoningEfforts
       else next.reasoningEfforts = reasoning
     }
-    if (model.compat !== undefined) {
+    if (api !== 'openai-completions') {
+      delete next.compat
+    } else if (model.compat !== undefined) {
       const compat = materializeCompat(model.compat)
       if (compat === undefined) delete next.compat
       else next.compat = compat

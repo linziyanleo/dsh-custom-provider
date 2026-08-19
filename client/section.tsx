@@ -13,8 +13,8 @@ import { AdvancedEditor, ModelAdvancedFields } from './advanced'
 import { IconAction } from './icon-action'
 import type { HostApi, Translate } from './host'
 import type { CustomProvidersStore } from './store'
-import { buildSaveOps, draftFromConfig, emptyModelDraft, isAdvancedDirty, validateDraft, validateRoute } from './ops'
-import type { ModelDraft, ProviderDraft } from './ops'
+import { buildSaveOps, draftFromConfig, emptyModelDraft, isAdvancedDirty, PROVIDER_APIS, validateDraft, validateRoute } from './ops'
+import type { ModelDraft, ProviderApi, ProviderDraft } from './ops'
 
 const NS = 'llm-custom'
 
@@ -45,6 +45,16 @@ const hintStyle = {
 const errorStyle = { margin: 0, fontSize: 12, color: 'var(--dsw-alias-label-error, #d4351c)' } as const
 
 const successStyle = { margin: 0, fontSize: 12, color: 'var(--dsw-alias-label-positive, #1a7f37)' } as const
+
+const selectStyle = {
+  width: '100%',
+  padding: '7px 8px',
+  borderRadius: 8,
+  border: '1px solid var(--dsw-alias-border-secondary, rgba(127, 127, 127, 0.25))',
+  background: 'var(--dsw-alias-surface, transparent)',
+  color: 'var(--dsw-alias-label-primary, inherit)',
+  fontSize: 13,
+} as const
 
 function displayNameOf(config: Record<string, unknown>, route: string): string {
   return typeof config.displayName === 'string' && config.displayName.trim().length > 0
@@ -229,6 +239,18 @@ function ProviderEditor(props: EditorProps) {
           </label>
         </div>
       </div>
+      <label style={labelStyle}>
+        {t('protocol')}
+        <select
+          style={selectStyle}
+          value={draft.api ?? 'openai-completions'}
+          disabled={!props.writable || busy}
+          onChange={event => patch({ api: event.target.value as ProviderApi })}
+        >
+          {PROVIDER_APIS.map(api => <option key={api} value={api}>{api}</option>)}
+        </select>
+        <span style={hintStyle}>{t(`protocolHint.${draft.api ?? 'openai-completions'}`)}</span>
+      </label>
       <div>
         <label style={labelStyle}>
           {t('baseUrl')}
@@ -352,6 +374,7 @@ function ProviderEditor(props: EditorProps) {
                 }}>
                   <ModelAdvancedFields
                     t={t}
+                    api={draft.api ?? 'openai-completions'}
                     model={model}
                     disabled={!props.writable || busy}
                     onChange={part => patchModel(index, part)}
@@ -373,15 +396,17 @@ function ProviderEditor(props: EditorProps) {
         </div>
         {modelsError === undefined ? null : <p style={errorStyle}>{modelsError}</p>}
       </div>
-      <AdvancedEditor
-        t={t}
-        draft={draft}
-        writable={props.writable}
-        busy={busy}
-        open={advancedOpen}
-        onToggle={setAdvancedOpen}
-        onPatch={patch}
-      />
+      {(draft.api ?? 'openai-completions') === 'openai-completions' ? (
+        <AdvancedEditor
+          t={t}
+          draft={draft}
+          writable={props.writable}
+          busy={busy}
+          open={advancedOpen}
+          onToggle={setAdvancedOpen}
+          onPatch={patch}
+        />
+      ) : null}
       {failure === undefined ? null : <p role="alert" style={errorStyle}>{failure}</p>}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <Button disabled={busy} onClick={cancel}>{t('cancel')}</Button>
@@ -514,6 +539,7 @@ export function CustomProvidersSection(props: SectionProps) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 14, fontWeight: 500 }}>{name}</span>
                   <span style={hintStyle}>{row.route}</span>
+                  <span style={hintStyle}>{typeof row.config.api === 'string' ? row.config.api : 'openai-completions'}</span>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                     <StateDot state={row.credentialConfigured ? 'done' : 'warning'} size={8} />
                     <span style={hintStyle}>{row.credentialConfigured ? t('credentialConfigured') : t('keyMissing')}</span>

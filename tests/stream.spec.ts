@@ -6,14 +6,20 @@ import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
 import * as CustomProvider from '../src/index.js'
 import {
   assemble,
+  ANTHROPIC_EVENT_NAMES,
+  ANTHROPIC_TEXT_EVENTS,
+  ANTHROPIC_TOOL_EVENTS,
   MemoryCredentials,
   mockServer,
+  RESPONSES_TEXT_EVENTS,
+  RESPONSES_TOOL_EVENTS,
   routeConfig,
   TEST_CREDENTIAL_REF,
   TEXT_EVENTS,
   TOOL_EVENTS,
 } from './helpers.js'
 import type { MockServer } from './helpers.js'
+import type { ProviderApi } from '../src/config.js'
 
 const servers: MockServer[] = []
 
@@ -21,11 +27,12 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map(server => server.close()))
 })
 
-async function boot(server: MockServer, key = 'first-key'): Promise<Context> {
+async function boot(server: MockServer, key = 'first-key', api: ProviderApi = 'openai-completions'): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(MemoryCredentials, { [TEST_CREDENTIAL_REF]: key })
-  await ctx.plugin(CustomProvider, routeConfig(`${server.url}/v1`))
+  const baseURL = api === 'anthropic-messages' ? server.url : `${server.url}/v1`
+  await ctx.plugin(CustomProvider, routeConfig(baseURL, api))
   return ctx
 }
 
@@ -58,6 +65,98 @@ describe('PiAiAdapter reuse', () => {
     expect(server.requests[0]).not.toHaveProperty('store')
     expect(server.requests[0]).not.toHaveProperty('max_completion_tokens')
     expect((server.requests[0]?.messages as Array<{ role: string }> | undefined)?.[0]?.role).toBe('system')
+  })
+
+  it('streams text through OpenAI Responses and uses its request shape', async () => {
+    const server = await mockServer([{ events: RESPONSES_TEXT_EVENTS }])
+    servers.push(server)
+    const ctx = await boot(server, 'responses-key', 'openai-responses')
+
+    const result = await assemble(ctx, {
+      provider: 'routify',
+      model: 'routify-model',
+      messages: [],
+    })
+
+    expect(result.message.content).toEqual([{ type: 'text', text: 'hello' }])
+    expect(result.usage).toEqual({ inputTokens: 3, outputTokens: 1 })
+    expect(result.finish).toEqual({ kind: 'stop' })
+    expect(server.paths).toEqual(['/v1/responses'])
+    expect(server.headers[0]?.authorization).toBe('Bearer responses-key')
+    expect(server.requests[0]).toMatchObject({
+      model: 'routify-model',
+      input: [],
+      max_output_tokens: 32_768,
+      stream: true,
+    })
+  })
+
+  it('streams text through Anthropic Messages and uses its request shape', async () => {
+    const server = await mockServer([{
+      events: ANTHROPIC_TEXT_EVENTS,
+      eventNames: ANTHROPIC_EVENT_NAMES,
+    }])
+    servers.push(server)
+    const ctx = await boot(server, 'anthropic-key', 'anthropic-messages')
+
+    const result = await assemble(ctx, {
+      provider: 'routify',
+      model: 'routify-model',
+      messages: [],
+    })
+
+    expect(result.message.content).toEqual([{ type: 'text', text: 'hello' }])
+    expect(result.usage).toEqual({ inputTokens: 3, outputTokens: 1 })
+    expect(result.finish).toEqual({ kind: 'stop' })
+    expect(server.paths).toEqual(['/v1/messages'])
+    expect(server.headers[0]?.['x-api-key']).toBe('anthropic-key')
+    expect(server.requests[0]).toMatchObject({
+      model: 'routify-model',
+      messages: [],
+      max_tokens: 32_768,
+      stream: true,
+    })
+  })
+
+  it.each([
+    {
+      api: 'openai-responses' as const,
+      behavior: { events: RESPONSES_TOOL_EVENTS },
+      expectedId: 'call-1|fc-1',
+      expectedPath: '/v1/responses',
+    },
+    {
+      api: 'anthropic-messages' as const,
+      behavior: { events: ANTHROPIC_TOOL_EVENTS, eventNames: ANTHROPIC_EVENT_NAMES },
+      expectedId: 'toolu-1',
+      expectedPath: '/v1/messages',
+    },
+  ])('streams tool calls through $api', async ({ api, behavior, expectedId, expectedPath }) => {
+    const server = await mockServer([behavior])
+    servers.push(server)
+    const ctx = await boot(server, 'tool-key', api)
+
+    const result = await assemble(ctx, {
+      provider: 'routify',
+      model: 'routify-model',
+      messages: [],
+      tools: [{
+        name: 'lookup',
+        description: 'Look up a city.',
+        parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'] },
+      }],
+    })
+
+    expect(result.message.content).toEqual([{
+      type: 'tool-call',
+      id: expectedId,
+      name: 'lookup',
+      arguments: '{"city":"Hangzhou"}',
+    }])
+    expect(result.usage).toEqual({ inputTokens: 5, outputTokens: 2 })
+    expect(result.finish).toEqual({ kind: 'tool-calls' })
+    expect(server.paths).toEqual([expectedPath])
+    expect(server.requests[0]?.tools).toEqual([expect.objectContaining({ name: 'lookup' })])
   })
 
   it('preserves streamed tool-call arguments and sends the tool schema', async () => {

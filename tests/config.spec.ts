@@ -19,18 +19,29 @@ describe('configuration boundary', () => {
     })
   })
 
-  it('rejects unsupported protocols and invalid compat fields in the schema', () => {
+  it('accepts all supported protocols and rejects unknown protocols', () => {
+    for (const api of ['openai-completions', 'openai-responses', 'anthropic-messages'] as const) {
+      expect(Config(routeConfig('https://gateway.example/v1', api))).toMatchObject({
+        providers: { routify: { api } },
+      })
+    }
     const source = routeConfig('https://gateway.example/v1') as unknown as {
       providers: { routify: Record<string, unknown> }
     }
-    source.providers.routify.api = 'openai-responses'
+    source.providers.routify.api = 'unknown-protocol'
     expect(() => Config(source as unknown as ConfigShape)).toThrow()
+  })
 
+  it('rejects invalid or protocol-inapplicable compat fields', () => {
     const compat = routeConfig('https://gateway.example/v1') as unknown as {
       providers: { routify: { compat: Record<string, unknown> } }
     }
     compat.providers.routify.compat.maxTokensField = 'output_tokens'
     expect(() => Config(compat as unknown as ConfigShape)).toThrow()
+
+    const responses = routeConfig('https://gateway.example/v1', 'openai-responses')
+    responses.providers!.routify!.compat = { supportsStore: false }
+    expect(() => resolveProviders(responses)).toThrow(/only supported by openai-completions/)
   })
 
   it('fails semantic errors before registration', () => {
@@ -132,5 +143,13 @@ describe('static provider materialization', () => {
       xhigh: null,
       max: 'ultra',
     })
+  })
+
+  it('materializes each protocol through the same provider interface', () => {
+    for (const api of ['openai-completions', 'openai-responses', 'anthropic-messages'] as const) {
+      const profile = resolveProviders(routeConfig('https://gateway.example/v1', api)).get('routify')
+      expect(profile?.api).toBe(api)
+      expect(profile?.piProvider.getModels()[0]).toMatchObject({ api })
+    }
   })
 })

@@ -6,10 +6,12 @@ import {
   emptyCompatDraft,
   mergeProvider,
   parseCapacity,
+  PROVIDER_APIS,
   validateDraft,
   validateRoute,
 } from '../client/ops.js'
 import type { ModelDraft, ProviderDraft } from '../client/ops.js'
+import { PROVIDER_APIS as SERVER_PROVIDER_APIS } from '../src/config.js'
 
 function model(overrides: Partial<ModelDraft> = {}): ModelDraft {
   return {
@@ -50,6 +52,12 @@ describe('parseCapacity', () => {
     expect(parseCapacity('')).toBeUndefined()
     expect(parseCapacity('10G')).toBeUndefined()
     expect(parseCapacity('0.4')).toBeUndefined()
+  })
+})
+
+describe('protocol choices', () => {
+  it('keeps the browser selector aligned with the server schema', () => {
+    expect(PROVIDER_APIS).toEqual(SERVER_PROVIDER_APIS)
   })
 })
 
@@ -122,6 +130,20 @@ describe('mergeProvider', () => {
       baseURL: 'https://gateway.example/v1',
       models: [{ id: 'model-a', contextWindow: 262_144, maxTokens: 32_768 }],
     })
+  })
+
+  it('round-trips protocol selection and removes Chat Completions compat when switching protocols', () => {
+    const committed = mergeProvider(undefined, draft({
+      compat: { ...emptyCompatDraft(), supportsStore: 'false' },
+      models: [model({ compat: { ...emptyCompatDraft(), supportsDeveloperRole: 'false' } })],
+    }))
+    const parsed = draftFromConfig(committed)
+    parsed.api = 'anthropic-messages'
+    const merged = mergeProvider(committed, parsed)
+
+    expect(merged.api).toBe('anthropic-messages')
+    expect(merged).not.toHaveProperty('compat')
+    expect((merged.models as Record<string, unknown>[])[0]).not.toHaveProperty('compat')
   })
 
   it('preserves committed advanced fields for legacy drafts without advanced controls', () => {

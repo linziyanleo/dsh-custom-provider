@@ -1,7 +1,7 @@
 import { Button, DisclosureRow, Input, IconSettingsOutline16, IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { IconAction } from './icon-action'
 import type { Translate } from './host'
-import type { CompatDraft, ModelDraft, ProviderDraft, ReasoningEffortDraft, ReasoningMode, ThinkingLevel } from './ops'
+import type { CompatDraft, ModelDraft, ProviderApi, ProviderDraft, ReasoningEffortDraft, ReasoningMode, ThinkingLevel } from './ops'
 import { emptyCompatDraft, THINKING_FORMATS, THINKING_LEVELS } from './ops'
 
 const labelStyle = {
@@ -186,11 +186,12 @@ function ReasoningEffortRow(props: {
 
 export function ModelAdvancedFields(props: {
   t: Translate
+  api: ProviderApi
   model: ModelDraft
   disabled: boolean
   onChange(patch: Partial<ModelDraft>): void
 }) {
-  const { t, model, disabled, onChange } = props
+  const { t, api, model, disabled, onChange } = props
   const mode = model.reasoningMode ?? 'unset'
   const efforts = model.reasoningEfforts ?? []
   const usedLevels = new Set(efforts.map(effort => effort.level))
@@ -242,12 +243,14 @@ export function ModelAdvancedFields(props: {
           </div>
         </div>
       ) : null}
-      <CompatFields
-        t={t}
-        value={model.compat ?? emptyCompatDraft()}
-        disabled={disabled}
-        onChange={patch => onChange({ compat: { ...(model.compat ?? emptyCompatDraft()), ...patch } })}
-      />
+      {api === 'openai-completions' ? (
+        <CompatFields
+          t={t}
+          value={model.compat ?? emptyCompatDraft()}
+          disabled={disabled}
+          onChange={patch => onChange({ compat: { ...(model.compat ?? emptyCompatDraft()), ...patch } })}
+        />
+      ) : null}
     </div>
   )
 }
