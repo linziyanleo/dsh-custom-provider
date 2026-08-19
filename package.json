@@ -49,8 +49,7 @@
     "build": "tsc -p tsconfig.build.json && tsdown",
     "check": "pnpm test && pnpm typecheck && pnpm build && node scripts/assert-client-bundle.mjs",
     "release:version": "node scripts/prepare-release.mjs",
-    "prepublishOnly": "pnpm check && npm pack --dry-run --ignore-scripts",
-    "prepare": "pnpm build"
+    "prepublishOnly": "pnpm check && npm pack --dry-run --ignore-scripts"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
