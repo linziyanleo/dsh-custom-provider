@@ -41,7 +41,7 @@ llm-custom:
 
 ## Web UI 配置
 
-web profile 下，bundle 还会注入一个浏览器客户端模块（`dsh.client`），在设置面板注册「自定义提供方 / Custom Providers」页面（中英双语，跟随界面语言）。该页面提供最小交互编辑：新增/编辑/删除路由，字段包括 Provider ID、显示名称、API 地址、凭据引用、API 密钥（只写，经 `credentials.set` 存入凭据存储）以及模型目录（模型 ID、显示名称、上下文窗口、最大输出 token，支持 K/M 后缀）。保存经 `settings.mutate` 按路径 diff 写入并携带 `expectedRevision` 防冲突；`reasoningEfforts`、`compat` 等表单之外的字段在保存时原样保留，仍需在 `settings.yaml` 中编辑。
+web profile 下，bundle 还会注入一个浏览器客户端模块（`dsh.client`），在设置面板注册「自定义提供方 / Custom Providers」页面（中英双语，跟随界面语言）。该页面提供新增/编辑/删除路由，字段包括 Provider ID、显示名称、API 地址、凭据引用、API 密钥（只写，经 `credentials.set` 存入凭据存储）以及模型目录（模型 ID、显示名称、上下文窗口、最大输出，支持 `200K`、`1m` 等 K/M 后缀）。「高级字段」展开区可完整配置 provider/model 的 `compat` 六项和每个模型的 `reasoningEfforts` 档位映射；保存经 `settings.mutate` 按路径 diff 写入并携带 `expectedRevision` 防冲突。
 
 ## 安装与验证
 

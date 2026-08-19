@@ -4,12 +4,66 @@
  * into the browser client unchanged.
  */
 
+/** Thinking formats accepted by the server compat schema. */
+export const THINKING_FORMATS = [
+  'openai',
+  'deepseek',
+  'openrouter',
+  'together',
+  'zai',
+  'qwen',
+  'string-thinking',
+  'ant-ling',
+] as const
+
+export type ThinkingFormat = typeof THINKING_FORMATS[number]
+
+/** Pi-ai reasoning levels in selector order. */
+export const THINKING_LEVELS = [
+  'off',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+] as const
+
+export type ThinkingLevel = typeof THINKING_LEVELS[number]
+
+/** A tri-state select value: unset, explicit true, or explicit false. */
+export type BoolChoice = '' | 'true' | 'false'
+
+/** Form representation of the six compat fields on a route or model. */
+export interface CompatDraft {
+  supportsStore: BoolChoice
+  supportsDeveloperRole: BoolChoice
+  thinkingFormat: '' | ThinkingFormat
+  supportsReasoningEffort: BoolChoice
+  maxTokensField: '' | 'max_completion_tokens' | 'max_tokens'
+  requiresReasoningContentOnAssistantMessages: BoolChoice
+}
+
+export interface ReasoningEffortDraft {
+  level: ThinkingLevel
+  wire: string
+}
+
+export type ReasoningMode = 'unset' | 'false' | 'custom'
+
 /** One model row as edited in the form; capacities stay raw text until save. */
 export interface ModelDraft {
   id: string
   name: string
   contextWindow: string
   maxTokens: string
+  /**
+   * Optional so pre-advanced callers/tests can still build minimal drafts;
+   * omitted fields preserve whatever the committed model already has.
+   */
+  reasoningMode?: ReasoningMode
+  reasoningEfforts?: ReasoningEffortDraft[]
+  compat?: CompatDraft
 }
 
 /** The editable subset of one provider route. */
@@ -18,6 +72,8 @@ export interface ProviderDraft {
   apiKeyEnv: string
   baseURL: string
   models: ModelDraft[]
+  /** Optional for the same backward-compatible reason as {@link ModelDraft.compat}. */
+  compat?: CompatDraft
 }
 
 /** One path-addressed settings write, mirroring the host's settings.mutate wire shape. */
@@ -28,8 +84,61 @@ export type PathOp =
 /** Route ids double as settings keys and provider ids; keep the dsh kebab-case convention. */
 export const ROUTE_PATTERN = /^[a-z][a-z0-9-]*$/
 
+export function emptyCompatDraft(): CompatDraft {
+  return {
+    supportsStore: '',
+    supportsDeveloperRole: '',
+    thinkingFormat: '',
+    supportsReasoningEffort: '',
+    maxTokensField: '',
+    requiresReasoningContentOnAssistantMessages: '',
+  }
+}
+
+export function emptyModelDraft(): ModelDraft {
+  return {
+    id: '',
+    name: '',
+    contextWindow: '',
+    maxTokens: '',
+    reasoningMode: 'unset',
+    reasoningEfforts: [],
+    compat: emptyCompatDraft(),
+  }
+}
+
+export function emptyProviderDraft(): ProviderDraft {
+  return {
+    displayName: '',
+    apiKeyEnv: '',
+    baseURL: '',
+    models: [],
+    compat: emptyCompatDraft(),
+  }
+}
+
+function compatHasValue(compat: CompatDraft | undefined): boolean {
+  return compat !== undefined && (
+    compat.supportsStore !== ''
+    || compat.supportsDeveloperRole !== ''
+    || compat.thinkingFormat !== ''
+    || compat.supportsReasoningEffort !== ''
+    || compat.maxTokensField !== ''
+    || compat.requiresReasoningContentOnAssistantMessages !== ''
+  )
+}
+
+/** Whether the advanced part of a draft differs from the untouched defaults. */
+export function isAdvancedDirty(draft: ProviderDraft): boolean {
+  if (compatHasValue(draft.compat)) return true
+  return draft.models.some(model =>
+    (model.reasoningMode ?? 'unset') !== 'unset'
+    || (model.reasoningEfforts?.length ?? 0) > 0
+    || compatHasValue(model.compat))
+}
+
 /**
- * Parse a positive integer capacity, accepting the host's K/M suffixes
+ * Parse a positive integer capacity, accepting case-insensitive K/M suffixes
  * (K = 1024, M = 1024²). Returns undefined for anything else.
  */
 export function parseCapacity(raw: string): number | undefined {
@@ -65,12 +174,87 @@ export function validateDraft(draft: ProviderDraft):
     seen.add(id)
     if (parseCapacity(model.contextWindow) === undefined) return { field: 'model', index, key: 'capacityInvalid' }
     if (parseCapacity(model.maxTokens) === undefined) return { field: 'model', index, key: 'capacityInvalid' }
+    if ((model.reasoningMode ?? 'unset') !== 'custom') continue
+    const levels = new Set<ThinkingLevel>()
+    let hasReasoningLevel = false
+    for (const effort of model.reasoningEfforts ?? []) {
+      if (levels.has(effort.level)) return { field: 'model', index, key: 'reasoningLevelDuplicate' }
+      levels.add(effort.level)
+      if (effort.level !== 'off') {
+        hasReasoningLevel = true
+        if (effort.wire.trim().length === 0) return { field: 'model', index, key: 'reasoningWireRequired' }
+      }
+    }
+    if (!hasReasoningLevel) return { field: 'model', index, key: 'reasoningLevelRequired' }
   }
   return undefined
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function boolChoice(value: unknown): BoolChoice {
+  if (value === true) return 'true'
+  if (value === false) return 'false'
+  return ''
+}
+
+function compatDraftFrom(value: unknown): CompatDraft {
+  const source = isPlainObject(value) ? value : {}
+  const thinkingFormat = typeof source.thinkingFormat === 'string'
+    && (THINKING_FORMATS as readonly string[]).includes(source.thinkingFormat)
+    ? source.thinkingFormat as ThinkingFormat
+    : ''
+  const maxTokensField = source.maxTokensField === 'max_completion_tokens' || source.maxTokensField === 'max_tokens'
+    ? source.maxTokensField
+    : ''
+  return {
+    supportsStore: boolChoice(source.supportsStore),
+    supportsDeveloperRole: boolChoice(source.supportsDeveloperRole),
+    thinkingFormat,
+    supportsReasoningEffort: boolChoice(source.supportsReasoningEffort),
+    maxTokensField,
+    requiresReasoningContentOnAssistantMessages: boolChoice(source.requiresReasoningContentOnAssistantMessages),
+  }
+}
+
+function reasoningDraftFrom(value: unknown): { mode: ReasoningMode; efforts: ReasoningEffortDraft[] } {
+  if (value === false) return { mode: 'false', efforts: [] }
+  if (!isPlainObject(value)) return { mode: 'unset', efforts: [] }
+  const source = value as Record<string, unknown>
+  const efforts: ReasoningEffortDraft[] = []
+  for (const level of THINKING_LEVELS) {
+    const wire = source[level]
+    if (wire === undefined) continue
+    if (wire === null) efforts.push({ level, wire: '' })
+    else if (typeof wire === 'string') efforts.push({ level, wire })
+  }
+  return { mode: 'custom', efforts }
+}
+
+/** Parse a committed provider section into the editable form draft. */
+export function draftFromConfig(config: Record<string, unknown> | undefined): ProviderDraft {
+  const models = Array.isArray(config?.models) ? config.models : []
+  return {
+    displayName: typeof config?.displayName === 'string' ? config.displayName : '',
+    apiKeyEnv: typeof config?.apiKeyEnv === 'string' ? config.apiKeyEnv : '',
+    baseURL: typeof config?.baseURL === 'string' ? config.baseURL : '',
+    compat: compatDraftFrom(config?.compat),
+    models: models.map((model) => {
+      const entry = isPlainObject(model) ? model : {}
+      const reasoning = reasoningDraftFrom(entry.reasoningEfforts)
+      return {
+        id: typeof entry.id === 'string' ? entry.id : '',
+        name: typeof entry.name === 'string' ? entry.name : '',
+        contextWindow: typeof entry.contextWindow === 'number' ? String(entry.contextWindow) : '',
+        maxTokens: typeof entry.maxTokens === 'number' ? String(entry.maxTokens) : '',
+        reasoningMode: reasoning.mode,
+        reasoningEfforts: reasoning.efforts,
+        compat: compatDraftFrom(entry.compat),
+      }
+    }),
+  }
 }
 
 function deepEqual(a: unknown, b: unknown): boolean {
@@ -113,10 +297,32 @@ function assign(target: Record<string, unknown>, key: string, value: string): vo
   else target[key] = trimmed
 }
 
+function materializeCompat(draft: CompatDraft | undefined): Record<string, unknown> | undefined {
+  if (draft === undefined) return undefined
+  const compat: Record<string, unknown> = {}
+  if (draft.supportsStore !== '') compat.supportsStore = draft.supportsStore === 'true'
+  if (draft.supportsDeveloperRole !== '') compat.supportsDeveloperRole = draft.supportsDeveloperRole === 'true'
+  if (draft.thinkingFormat !== '') compat.thinkingFormat = draft.thinkingFormat
+  if (draft.supportsReasoningEffort !== '') compat.supportsReasoningEffort = draft.supportsReasoningEffort === 'true'
+  if (draft.maxTokensField !== '') compat.maxTokensField = draft.maxTokensField
+  if (draft.requiresReasoningContentOnAssistantMessages !== '') compat.requiresReasoningContentOnAssistantMessages = draft.requiresReasoningContentOnAssistantMessages === 'true'
+  return Object.keys(compat).length === 0 ? undefined : compat
+}
+
+function materializeReasoning(model: ModelDraft): false | Record<string, string | null> | undefined {
+  const mode = model.reasoningMode ?? 'unset'
+  if (mode === 'unset') return undefined
+  if (mode === 'false') return false
+  const efforts: Record<string, string | null> = {}
+  for (const effort of model.reasoningEfforts ?? []) {
+    efforts[effort.level] = effort.level === 'off' && effort.wire.trim().length === 0 ? null : effort.wire.trim()
+  }
+  return efforts
+}
+
 /**
- * Materialize the wire profile for one route. Fields the form does not edit
- * (`compat`, per-model `reasoningEfforts`) survive by merging over the
- * committed provider and, per model id, over the committed model entry.
+ * Materialize the wire profile for one route. Advanced fields are written from
+ * their draft controls; omitted legacy draft fields preserve committed values.
  */
 export function mergeProvider(
   committed: Record<string, unknown> | undefined,
@@ -127,6 +333,11 @@ export function mergeProvider(
   assign(merged, 'apiKeyEnv', draft.apiKeyEnv)
   merged.api = 'openai-completions'
   merged.baseURL = draft.baseURL.trim().replace(/\/+$/, '')
+  if (draft.compat !== undefined) {
+    const compat = materializeCompat(draft.compat)
+    if (compat === undefined) delete merged.compat
+    else merged.compat = compat
+  }
   const committedModels = Array.isArray(committed?.models) ? committed.models : []
   merged.models = draft.models.map((model) => {
     const previous = committedModels.find(
@@ -136,6 +347,16 @@ export function mergeProvider(
     assign(next, 'name', model.name)
     next.contextWindow = parseCapacity(model.contextWindow)
     next.maxTokens = parseCapacity(model.maxTokens)
+    if (model.reasoningMode !== undefined) {
+      const reasoning = materializeReasoning(model)
+      if (reasoning === undefined) delete next.reasoningEfforts
+      else next.reasoningEfforts = reasoning
+    }
+    if (model.compat !== undefined) {
+      const compat = materializeCompat(model.compat)
+      if (compat === undefined) delete next.compat
+      else next.compat = compat
+    }
     return next
   })
   return merged

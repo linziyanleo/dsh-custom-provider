@@ -1,8 +1,9 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { Button, Input, Modal, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
+import { AdvancedEditor } from './advanced'
 import type { HostApi, Translate } from './host'
 import type { CustomProvidersStore } from './store'
-import { buildSaveOps, validateDraft, validateRoute } from './ops'
+import { buildSaveOps, draftFromConfig, emptyModelDraft, isAdvancedDirty, validateDraft, validateRoute } from './ops'
 import type { ModelDraft, ProviderDraft } from './ops'
 
 const NS = 'llm-custom'
@@ -34,24 +35,6 @@ const hintStyle = {
 const errorStyle = { margin: 0, fontSize: 12, color: 'var(--dsw-alias-label-error, #d4351c)' } as const
 
 const successStyle = { margin: 0, fontSize: 12, color: 'var(--dsw-alias-label-positive, #1a7f37)' } as const
-
-function draftFrom(config: Record<string, unknown> | undefined): ProviderDraft {
-  const models = Array.isArray(config?.models) ? config.models : []
-  return {
-    displayName: typeof config?.displayName === 'string' ? config.displayName : '',
-    apiKeyEnv: typeof config?.apiKeyEnv === 'string' ? config.apiKeyEnv : '',
-    baseURL: typeof config?.baseURL === 'string' ? config.baseURL : '',
-    models: models.map((model) => {
-      const entry = typeof model === 'object' && model !== null ? model as Record<string, unknown> : {}
-      return {
-        id: typeof entry.id === 'string' ? entry.id : '',
-        name: typeof entry.name === 'string' ? entry.name : '',
-        contextWindow: typeof entry.contextWindow === 'number' ? String(entry.contextWindow) : '',
-        maxTokens: typeof entry.maxTokens === 'number' ? String(entry.maxTokens) : '',
-      }
-    }),
-  }
-}
 
 function displayNameOf(config: Record<string, unknown>, route: string): string {
   return typeof config.displayName === 'string' && config.displayName.trim().length > 0
@@ -86,7 +69,8 @@ interface EditorProps {
 function ProviderEditor(props: EditorProps) {
   const { t, api } = props
   const [route, setRoute] = useState(props.editing?.route ?? '')
-  const [draft, setDraft] = useState<ProviderDraft>(() => draftFrom(props.editing?.config))
+  const [draft, setDraft] = useState<ProviderDraft>(() => draftFromConfig(props.editing?.config))
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [keyValue, setKeyValue] = useState('')
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | undefined>(undefined)
@@ -122,6 +106,7 @@ function ProviderEditor(props: EditorProps) {
       || model.name.trim().length > 0
       || model.contextWindow.trim().length > 0
       || model.maxTokens.trim().length > 0)
+    || isAdvancedDirty(draft)
   const dirty = props.editing === undefined
     ? hasUserInput
     : trimmedKey.length > 0 || buildSaveOps(props.editing.route, props.editing.config, draft).length > 0
@@ -144,6 +129,7 @@ function ProviderEditor(props: EditorProps) {
     if (draftError !== undefined) {
       if (draftError.field === 'model') {
         setValidation({ field: 'model', index: draftError.index, message: t(draftError.key) })
+        if (draftError.key.startsWith('reasoning')) setAdvancedOpen(true)
       } else {
         setValidation({ field: draftError.field, message: t(draftError.key) })
       }
@@ -329,14 +315,23 @@ function ProviderEditor(props: EditorProps) {
           <Button
             size="sm"
             disabled={!props.writable || busy}
-            onClick={() => patch({ models: [...draft.models, { id: '', name: '', contextWindow: '', maxTokens: '' }] })}
+            onClick={() => patch({ models: [...draft.models, emptyModelDraft()] })}
           >
             {t('addModel')}
           </Button>
         </div>
         {modelsError === undefined ? null : <p style={errorStyle}>{modelsError}</p>}
       </div>
-      <p style={hintStyle}>{t('advancedHint')}</p>
+      <AdvancedEditor
+        t={t}
+        draft={draft}
+        writable={props.writable}
+        busy={busy}
+        open={advancedOpen}
+        onToggle={setAdvancedOpen}
+        onPatch={patch}
+        onPatchModel={patchModel}
+      />
       {failure === undefined ? null : <p role="alert" style={errorStyle}>{failure}</p>}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <Button disabled={busy} onClick={cancel}>{t('cancel')}</Button>
