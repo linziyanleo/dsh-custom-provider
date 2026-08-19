@@ -21,26 +21,6 @@ A model endpoint may need more than a base URL and an API key: its wire protocol
 - Reuse of DSH's pi-ai streaming adapters for protocol-specific request serialization, streamed text and tool calls, usage, finish reasons, cancellation, and replay.
 - Full-config validation before route registrations are replaced, so an invalid edit does not partially activate.
 
-## Screenshots
-
-### Web settings
-
-Provider credentials, endpoints, models, capacities, and advanced compatibility fields can be managed in DSH Web.
-
-![Custom Providers settings page](docs/images/custom-providers-settings.png)
-
-### YAML configuration
-
-The same provider and model catalog can be managed directly in `settings.yaml`.
-
-![llm-custom configuration in settings.yaml](docs/images/settings-yaml.png)
-
-## Requirements
-
-- Node.js `^22.19.0` or `>=24.0.0`
-- DeepSeek Harness with the Web profile
-- DSH `0.1.0-rc.7` compatible packages; see [`peerDependencies`](package.json) for the complete contract
-
 ## Installation
 
 Install the published package directly into the DSH Web profile:
@@ -56,6 +36,26 @@ npx @deepseek-ai/dsh --profile web --dump-config
 ```
 
 Pin a package version for reproducible installations, for example `@linziyanleo/dsh-custom-provider@0.1.1`.
+
+## Requirements
+
+- Node.js `^22.19.0` or `>=24.0.0` (minimum verified version: `22.19.0`)
+- DeepSeek Harness with the Web profile
+- DSH `0.1.0-rc.7` compatible packages; see [`peerDependencies`](package.json) for the complete contract
+
+## Screenshots
+
+### Web settings
+
+Provider credentials, endpoints, models, capacities, and advanced compatibility fields can be managed in DSH Web.
+
+![Custom Providers settings page](docs/images/custom-providers-settings.png)
+
+### YAML configuration
+
+The same provider and model catalog can be managed directly in `settings.yaml`.
+
+![llm-custom configuration in settings.yaml](docs/images/settings-yaml.png)
 
 ## Configuration
 

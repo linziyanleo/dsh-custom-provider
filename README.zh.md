@@ -21,26 +21,6 @@
 - 复用 DSH 的 pi-ai 流适配器，完成各协议的请求序列化、文本与工具调用流、usage、finish reason、取消和回放。
 - 替换路由注册前先校验完整配置，避免无效修改被部分应用。
 
-## 实际截图
-
-### Web 设置页
-
-可在 DSH Web 中管理提供方凭据、接口地址、模型、容量和高级兼容字段。
-
-![自定义提供方设置页](docs/images/custom-providers-settings.png)
-
-### YAML 配置
-
-同一份提供方和模型目录也可以直接通过 `settings.yaml` 管理。
-
-![settings.yaml 中的 llm-custom 配置](docs/images/settings-yaml.png)
-
-## 环境要求
-
-- Node.js `^22.19.0` 或 `>=24.0.0`
-- 启用了 Web profile 的 DeepSeek Harness
-- 与 DSH `0.1.0-rc.7` 兼容的相关包；完整契约见 [`peerDependencies`](package.json)
-
 ## 安装
 
 直接将已发布的包安装到 DSH Web profile：
@@ -56,6 +36,26 @@ npx @deepseek-ai/dsh --profile web --dump-config
 ```
 
 如需可复现安装，请固定包版本，例如 `@linziyanleo/dsh-custom-provider@0.1.1`。
+
+## 环境要求
+
+- Node.js `^22.19.0` 或 `>=24.0.0`（已验证的最低版本：`22.19.0`）
+- 启用了 Web profile 的 DeepSeek Harness
+- 与 DSH `0.1.0-rc.7` 兼容的相关包；完整契约见 [`peerDependencies`](package.json)
+
+## 实际截图
+
+### Web 设置页
+
+可在 DSH Web 中管理提供方凭据、接口地址、模型、容量和高级兼容字段。
+
+![自定义提供方设置页](docs/images/custom-providers-settings.png)
+
+### YAML 配置
+
+同一份提供方和模型目录也可以直接通过 `settings.yaml` 管理。
+
+![settings.yaml 中的 llm-custom 配置](docs/images/settings-yaml.png)
 
 ## 配置
 
