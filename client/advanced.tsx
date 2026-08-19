@@ -1,4 +1,5 @@
-import { Button, DisclosureRow, Input, IconSettingsOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, DisclosureRow, Input, IconSettingsOutline16, IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconAction } from './icon-action'
 import type { Translate } from './host'
 import type { CompatDraft, ModelDraft, ProviderDraft, ReasoningEffortDraft, ReasoningMode, ThinkingLevel } from './ops'
 import { emptyCompatDraft, THINKING_FORMATS, THINKING_LEVELS } from './ops'
@@ -34,15 +35,6 @@ const gridStyle = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
   gap: 12,
-} as const
-
-const modelGroupStyle = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 12,
-  padding: 12,
-  borderRadius: 10,
-  border: '1px solid var(--dsw-alias-border-secondary, rgba(127, 127, 127, 0.25))',
 } as const
 
 function TriField(props: {
@@ -182,12 +174,17 @@ function ReasoningEffortRow(props: {
           onChange={event => onChange({ wire: event.target.value })}
         />
       </label>
-      <Button size="sm" disabled={disabled} onClick={onRemove}>{t('removeReasoningLevel')}</Button>
+      <IconAction
+        label={t('removeReasoningLevel')}
+        icon={<IconTrashOutline16 size={16} />}
+        disabled={disabled}
+        onClick={onRemove}
+      />
     </div>
   )
 }
 
-function ModelAdvancedFields(props: {
+export function ModelAdvancedFields(props: {
   t: Translate
   model: ModelDraft
   disabled: boolean
@@ -263,9 +260,8 @@ export function AdvancedEditor(props: {
   open: boolean
   onToggle(open: boolean): void
   onPatch(patch: Partial<ProviderDraft>): void
-  onPatchModel(index: number, patch: Partial<ModelDraft>): void
 }) {
-  const { t, draft, writable, busy, open, onToggle, onPatch, onPatchModel } = props
+  const { t, draft, writable, busy, open, onToggle, onPatch } = props
   const disabled = !writable || busy
   return (
     <DisclosureRow
@@ -279,33 +275,12 @@ export function AdvancedEditor(props: {
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 4 }}>
         <p style={hintStyle}>{t('advancedHint')}</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span style={fieldNameStyle}>{t('providerCompat')}</span>
-          <CompatFields
-            t={t}
-            value={draft.compat ?? emptyCompatDraft()}
-            disabled={disabled}
-            onChange={patch => onPatch({ compat: { ...(draft.compat ?? emptyCompatDraft()), ...patch } })}
-          />
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span style={fieldNameStyle}>{t('modelAdvanced')}</span>
-          {draft.models.length === 0 ? (
-            <p style={hintStyle}>{t('advancedNoModels')}</p>
-          ) : draft.models.map((model, index) => (
-            <div key={index} style={modelGroupStyle}>
-              <span style={{ fontSize: 13, fontWeight: 500 }}>
-                {model.id.trim().length > 0 ? model.id.trim() : `${t('model')} ${index + 1}`}
-              </span>
-              <ModelAdvancedFields
-                t={t}
-                model={model}
-                disabled={disabled}
-                onChange={patch => onPatchModel(index, patch)}
-              />
-            </div>
-          ))}
-        </div>
+        <CompatFields
+          t={t}
+          value={draft.compat ?? emptyCompatDraft()}
+          disabled={disabled}
+          onChange={patch => onPatch({ compat: { ...(draft.compat ?? emptyCompatDraft()), ...patch } })}
+        />
       </div>
     </DisclosureRow>
   )

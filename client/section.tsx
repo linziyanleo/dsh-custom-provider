@@ -1,6 +1,16 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { Button, Input, Modal, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
-import { AdvancedEditor } from './advanced'
+import {
+  Button,
+  Input,
+  Modal,
+  StateDot,
+  IconChevronDownOutline14,
+  IconChevronUpOutline14,
+  IconEditOutline16,
+  IconTrashOutline16,
+} from '@deepseek-ai/dsh-client-ui-primitives'
+import { AdvancedEditor, ModelAdvancedFields } from './advanced'
+import { IconAction } from './icon-action'
 import type { HostApi, Translate } from './host'
 import type { CustomProvidersStore } from './store'
 import { buildSaveOps, draftFromConfig, emptyModelDraft, isAdvancedDirty, validateDraft, validateRoute } from './ops'
@@ -71,6 +81,7 @@ function ProviderEditor(props: EditorProps) {
   const [route, setRoute] = useState(props.editing?.route ?? '')
   const [draft, setDraft] = useState<ProviderDraft>(() => draftFromConfig(props.editing?.config))
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [openModels, setOpenModels] = useState<ReadonlySet<number>>(new Set())
   const [keyValue, setKeyValue] = useState('')
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | undefined>(undefined)
@@ -92,6 +103,21 @@ function ProviderEditor(props: EditorProps) {
       models: current.models.map((model, at) => (at === index ? { ...model, ...part } : model)),
     }))
     clearFeedback()
+  }
+
+  const toggleModel = (index: number): void => {
+    setOpenModels(current => {
+      const next = new Set(current)
+      if (next.has(index)) next.delete(index)
+      else next.add(index)
+      return next
+    })
+  }
+
+  const removeModel = (index: number): void => {
+    patch({ models: draft.models.filter((_, at) => at !== index) })
+    // Indices shift after removal; close all model panels to avoid pointing at the wrong entry.
+    setOpenModels(new Set())
   }
 
   const creating = props.editing === undefined
@@ -129,7 +155,7 @@ function ProviderEditor(props: EditorProps) {
     if (draftError !== undefined) {
       if (draftError.field === 'model') {
         setValidation({ field: 'model', index: draftError.index, message: t(draftError.key) })
-        if (draftError.key.startsWith('reasoning')) setAdvancedOpen(true)
+        if (draftError.key.startsWith('reasoning')) setOpenModels(current => new Set(current).add(draftError.index))
       } else {
         setValidation({ field: draftError.field, message: t(draftError.key) })
       }
@@ -255,29 +281,30 @@ function ProviderEditor(props: EditorProps) {
           const modelError = validation?.field === 'model' && validation.index === index
             ? validation.message
             : undefined
+          const modelOpen = openModels.has(index)
           return (
             <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={labelStyle}>
+                {t('modelId')}
+                <Input
+                  value={model.id}
+                  placeholder={t('modelId')}
+                  disabled={!props.writable || busy}
+                  aria-invalid={modelError === undefined ? undefined : true}
+                  onChange={event => patchModel(index, { id: event.target.value })}
+                />
+              </label>
+              <label style={labelStyle}>
+                {t('modelName')}
+                <Input
+                  value={model.name}
+                  placeholder={t('modelNamePlaceholder')}
+                  disabled={!props.writable || busy}
+                  onChange={event => patchModel(index, { name: event.target.value })}
+                />
+              </label>
               <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                <label style={{ ...labelStyle, flex: 2, minWidth: 120 }}>
-                  {t('modelId')}
-                  <Input
-                    value={model.id}
-                    placeholder={t('modelId')}
-                    disabled={!props.writable || busy}
-                    aria-invalid={modelError === undefined ? undefined : true}
-                    onChange={event => patchModel(index, { id: event.target.value })}
-                  />
-                </label>
-                <label style={{ ...labelStyle, flex: 2, minWidth: 120 }}>
-                  {t('modelName')}
-                  <Input
-                    value={model.name}
-                    placeholder={t('modelNamePlaceholder')}
-                    disabled={!props.writable || busy}
-                    onChange={event => patchModel(index, { name: event.target.value })}
-                  />
-                </label>
-                <label style={{ ...labelStyle, flex: 1, minWidth: 90 }}>
+                <label style={{ ...labelStyle, flex: 1, minWidth: 120 }}>
                   {t('contextWindow')}
                   <Input
                     value={model.contextWindow}
@@ -288,7 +315,7 @@ function ProviderEditor(props: EditorProps) {
                     onChange={event => patchModel(index, { contextWindow: event.target.value })}
                   />
                 </label>
-                <label style={{ ...labelStyle, flex: 1, minWidth: 90 }}>
+                <label style={{ ...labelStyle, flex: 1, minWidth: 120 }}>
                   {t('maxTokens')}
                   <Input
                     value={model.maxTokens}
@@ -299,14 +326,38 @@ function ProviderEditor(props: EditorProps) {
                     onChange={event => patchModel(index, { maxTokens: event.target.value })}
                   />
                 </label>
-                <Button
-                  size="sm"
+                <IconAction
+                  label={t('removeModel')}
+                  icon={<IconTrashOutline16 size={16} />}
+                  danger
                   disabled={!props.writable || busy}
-                  onClick={() => patch({ models: draft.models.filter((_, at) => at !== index) })}
-                >
-                  {t('removeModel')}
-                </Button>
+                  onClick={() => removeModel(index)}
+                />
               </div>
+              <div>
+                <IconAction
+                  label={t('modelAdvancedToggle')}
+                  icon={modelOpen ? <IconChevronUpOutline14 size={14} /> : <IconChevronDownOutline14 size={14} />}
+                  onClick={() => toggleModel(index)}
+                />
+              </div>
+              {modelOpen ? (
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12,
+                  padding: 12,
+                  borderRadius: 10,
+                  border: '1px solid var(--dsw-alias-border-secondary, rgba(127, 127, 127, 0.25))',
+                }}>
+                  <ModelAdvancedFields
+                    t={t}
+                    model={model}
+                    disabled={!props.writable || busy}
+                    onChange={part => patchModel(index, part)}
+                  />
+                </div>
+              ) : null}
               {modelError === undefined ? null : <p style={errorStyle}>{modelError}</p>}
             </div>
           )
@@ -330,7 +381,6 @@ function ProviderEditor(props: EditorProps) {
         open={advancedOpen}
         onToggle={setAdvancedOpen}
         onPatch={patch}
-        onPatchModel={patchModel}
       />
       {failure === undefined ? null : <p role="alert" style={errorStyle}>{failure}</p>}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -471,21 +521,19 @@ export function CustomProvidersSection(props: SectionProps) {
                   <span style={{ ...hintStyle, marginLeft: 'auto' }}>
                     {t('modelCount', { count: modelCountOf(row.config) })}
                   </span>
-                  <Button
-                    size="sm"
+                  <IconAction
+                    label={t('edit')}
+                    icon={<IconEditOutline16 size={16} />}
                     disabled={busy || adding || deleting !== undefined || (editing !== undefined && !isEditing)}
                     onClick={() => startEditing(row.route)}
-                  >
-                    {t('edit')}
-                  </Button>
+                  />
                   {row.removable ? (
-                    <Button
-                      size="sm"
+                    <IconAction
+                      label={t('delete')}
+                      icon={<IconTrashOutline16 size={16} />}
                       disabled={!snapshot.writable || busy || adding || editing !== undefined || (deleting !== undefined && !isDeleting)}
                       onClick={() => startDeleting(row.route)}
-                    >
-                      {t('delete')}
-                    </Button>
+                    />
                   ) : null}
                 </div>
                 {isEditing ? (
