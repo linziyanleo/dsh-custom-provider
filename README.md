@@ -2,21 +2,23 @@
 
 [English](README.md) | [简体中文](README.zh.md)
 
-A DSH plugin for configuring static OpenAI-compatible providers and model catalogs from the Web settings UI or `settings.yaml`.
+A DSH plugin for configuring static provider routes and model catalogs from the Web settings UI or `settings.yaml`. Each route can use OpenAI Chat Completions, OpenAI Responses, or Anthropic Messages.
 
 ## The problem it solves
 
-An OpenAI-compatible endpoint may need more than a base URL and an API key: its model catalog may be known in advance, model capacities may need to be declared explicitly, and request fields for reasoning or message replay may differ between providers.
+A model endpoint may need more than a base URL and an API key: its wire protocol must be selected, its model catalog may be known in advance, model capacities may need to be declared explicitly, and request fields for reasoning or message replay may differ between providers.
 
 `dsh-custom-provider` turns that information into provider routes that DeepSeek Harness (DSH) can use directly. Configured models appear in DSH's native model picker and continue through its standard streaming, tool-call, usage, finish-reason, cancellation, and reasoning-effort flows.
 
 ## What the plugin provides
 
 - A bilingual Web settings page for adding, editing, and removing custom providers.
+- Per-route protocol selection for `openai-completions`, `openai-responses`, and `anthropic-messages`.
 - A declarative `llm-custom.providers` configuration for `settings.yaml`.
 - A static model catalog; the plugin does not depend on a provider's `/models` endpoint.
 - Per-request credential resolution through the DSH credentials service. API keys are not stored in `settings.yaml`.
 - Provider-level defaults and per-model overrides for OpenAI Chat Completions compatibility fields.
+- Reuse of DSH's pi-ai streaming adapters for protocol-specific request serialization, streamed text and tool calls, usage, finish reasons, cancellation, and replay.
 - Full-config validation before route registrations are replaced, so an invalid edit does not partially activate.
 
 ## Screenshots
@@ -41,15 +43,10 @@ The same provider and model catalog can be managed directly in `settings.yaml`.
 
 ## Installation
 
-Build and install a package from a local checkout:
+Install the published package directly into the DSH Web profile:
 
 ```sh
-git clone https://github.com/linziyanleo/dsh-custom-provider.git
-cd dsh-custom-provider
-pnpm install --frozen-lockfile
-pnpm check
-pnpm pack --pack-destination /tmp
-npx @deepseek-ai/dsh plugin --profile web add /tmp/dsh-custom-provider-0.1.0.tgz
+npx @deepseek-ai/dsh plugin --profile web add @linziyanleo/dsh-custom-provider
 ```
 
 Verify that DSH loads the bundle and its configuration namespace:
@@ -58,7 +55,7 @@ Verify that DSH loads the bundle and its configuration namespace:
 npx @deepseek-ai/dsh --profile web --dump-config
 ```
 
-When installing directly from Git, pin a commit and allow the package's `prepare` build script if your package-manager policy blocks dependency build scripts.
+Pin a package version for reproducible installations, for example `@linziyanleo/dsh-custom-provider@0.1.1`.
 
 ## Configuration
 
@@ -66,11 +63,12 @@ When installing directly from Git, pin a commit and allow the package's `prepare
 
 Open **Settings → Custom Providers** in DSH Web, then:
 
-1. Add a provider ID, display name, API base URL, and credential reference.
-2. Enter the API key. The field is write-only and stores the value through the DSH credentials service.
-3. Add one or more models with their model IDs, display names, context windows, and maximum outputs. Capacity inputs accept integers and `K`/`M` suffixes such as `200K` or `1m`.
-4. Expand **Advanced** only when the endpoint requires compatibility overrides or custom reasoning-effort mappings.
-5. Save the provider. Its models become available to the model picker immediately after the settings change is applied.
+1. Add a provider ID and display name, then select the endpoint's wire protocol.
+2. Enter the protocol-appropriate API base URL and credential reference. See [Protocol and base URL](#protocol-and-base-url).
+3. Enter the API key. The field is write-only and stores the value through the DSH credentials service.
+4. Add one or more models with their model IDs, display names, context windows, and maximum outputs. Capacity inputs accept integers and `K`/`M` suffixes such as `200K` or `1m`.
+5. Expand a model's advanced fields only when it needs custom reasoning-effort mappings. Chat Completions routes also expose request compatibility overrides.
+6. Save the provider. Its models become available to the model picker immediately after the settings change is applied.
 
 ### `settings.yaml`
 
@@ -102,6 +100,32 @@ llm-custom:
 
 `apiKeyEnv` is a credential reference, not the secret itself. Configure its value through DSH's credentials service or the Web settings page.
 
+### Protocol and base URL
+
+The plugin passes `baseURL` to the selected protocol adapter. Configure the URL at the level expected by that adapter:
+
+| `api` | Request path appended by the adapter | Typical `baseURL` |
+| --- | --- | --- |
+| `openai-completions` | `/chat/completions` | `https://api.example.com/v1` |
+| `openai-responses` | `/responses` | `https://api.example.com/v1` |
+| `anthropic-messages` | `/v1/messages` | `https://api.example.com` |
+
+For a compatible gateway, choose the base URL that makes the resulting request path resolve on that gateway. The plugin normalizes trailing slashes but does not probe or rewrite endpoints.
+
+To use OpenAI Responses, change the route protocol while keeping an OpenAI-style `/v1` base:
+
+```yaml
+api: openai-responses
+baseURL: https://api.example.com/v1
+```
+
+To use Anthropic Messages, use the endpoint root before `/v1/messages`:
+
+```yaml
+api: anthropic-messages
+baseURL: https://api.example.com
+```
+
 ## Configuration reference
 
 Each key below is relative to `llm-custom.providers.<provider-id>`.
@@ -114,9 +138,9 @@ In the Web UI, a provider ID must start with a lowercase letter and contain only
 | --- | --- | --- |
 | `displayName` | No | Name shown in the model picker. Defaults to the provider ID. |
 | `apiKeyEnv` | Yes | DSH credential reference resolved before every request. |
-| `api` | Yes | Wire protocol. The supported value is `openai-completions`. |
-| `baseURL` | Yes | Absolute HTTP(S) base URL of the OpenAI-compatible endpoint. Trailing slashes are normalized. |
-| `compat` | No | Compatibility defaults inherited by every model on the route. |
+| `api` | Yes | Wire protocol: `openai-completions`, `openai-responses`, or `anthropic-messages`. |
+| `baseURL` | Yes | Absolute HTTP(S) base URL at the level expected by the selected protocol. Trailing slashes are normalized. |
+| `compat` | No | Chat Completions compatibility defaults inherited by every model on the route; rejected for other protocols. |
 | `models` | Yes | Static model catalog containing at least one model. Model IDs must be unique within the provider. |
 
 ### Model fields
@@ -128,11 +152,11 @@ In the Web UI, a provider ID must start with a lowercase letter and contain only
 | `contextWindow` | Yes | Positive integer context-window size in tokens. |
 | `maxTokens` | Yes | Positive integer maximum output size in tokens. |
 | `reasoningEfforts` | No | Selectable DSH reasoning levels mapped to provider wire values. Set to `false` to disable the reasoning control. |
-| `compat` | No | Per-model compatibility values. Each declared field overrides the provider-level value. |
+| `compat` | No | Per-model Chat Completions compatibility values; rejected for other protocols. Each declared field overrides the provider-level value. |
 
 ### Compatibility fields
 
-`compat` accepts the same fields at provider and model level:
+For `openai-completions`, `compat` accepts the same fields at provider and model level. These fields are not part of OpenAI Responses or Anthropic Messages routes, and the Web UI removes them when a route switches away from Chat Completions.
 
 | Field | Values | Effect |
 | --- | --- | --- |
@@ -166,15 +190,15 @@ Use `reasoningEfforts: false` when the model does not provide a reasoning contro
 
 ## Current scope
 
-- OpenAI Chat Completions-compatible endpoints only
+- OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages endpoints
 - Static, text-input model catalogs only
 - No remote model discovery
-- No automatic provider-specific defaults; compatibility fields are explicit configuration
+- No automatic provider-specific defaults; Chat Completions compatibility fields are explicit configuration
 
 ## Uninstall
 
 ```sh
-npx @deepseek-ai/dsh plugin --profile web remove dsh-custom-provider
+npx @deepseek-ai/dsh plugin --profile web remove @linziyanleo/dsh-custom-provider
 ```
 
 The uninstall command removes the plugin bundle only. See the lifecycle notes above for settings and credential cleanup.
@@ -187,6 +211,8 @@ pnpm check
 ```
 
 `pnpm check` runs the offline test suite, server and client type checks, the production build, and a client-bundle assertion. Live-provider acceptance is intentionally opt-in and is not part of the default check.
+
+Pushes to `main` are published only after the matching CI run succeeds. The publish workflow treats the version declared in `package.json` as a minimum: it uses that version when it is newer than npm, otherwise it increments the latest published patch version. `prepublishOnly` repeats the complete check and validates the package contents before npm accepts the release.
 
 ## License
 
